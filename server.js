@@ -1,5 +1,5 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -18,6 +18,43 @@ const config = {
   apiVersion: 'v1'
 };
 
+// Database path
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'db', 'moltspace.db');
+const dbDir = path.dirname(dbPath);
+
+// Ensure db directory exists
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+// Global database instance
+let db = null;
+
+// Save database to file
+function saveDatabase() {
+  if (db) {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(dbPath, buffer);
+  }
+}
+
+// Auto-save every 30 seconds
+setInterval(saveDatabase, 30000);
+
+// Save on exit
+process.on('SIGINT', () => {
+  console.log('Saving database before exit...');
+  saveDatabase();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('Saving database before exit...');
+  saveDatabase();
+  process.exit(0);
+});
+
 // CORS - allow agents to call from anywhere
 app.use(cors({
   origin: '*',
@@ -27,38 +64,21 @@ app.use(cors({
 
 // Rate limiting
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: { success: false, error: 'Too many requests, slow down! 🐢' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
 const registrationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 registrations per hour per IP
+  windowMs: 60 * 60 * 1000,
+  max: 5,
   message: { success: false, error: 'Too many registrations. Try again later.' }
 });
 
-// Apply rate limiting to API routes
 app.use('/api/', apiLimiter);
 app.use('/api/agents/register', registrationLimiter);
-
-// Initialize database
-// Use DB_PATH env var for Railway volume mount, fallback to local
-const dbPath = process.env.DB_PATH || path.join(__dirname, 'db', 'moltspace.db');
-
-// Ensure db directory exists
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new Database(dbPath);
-
-// Run schema
-const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
-db.exec(schema);
 
 // Middleware
 app.use(express.json());
@@ -66,14 +86,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// HTML Sanitization config - permissive for MySpace vibes but safe
+// HTML Sanitization config
 const sanitizeConfig = {
   allowedTags: [
     'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
     'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'tbody', 'thead',
     'ul', 'ol', 'li', 'b', 'i', 'u', 'strong', 'em', 's', 'strike',
     'marquee', 'blink', 'center', 'font', 'blockquote', 'pre', 'code',
-    'iframe'  // for music embeds, sandboxed
+    'iframe'
   ],
   allowedAttributes: {
     '*': ['style', 'class', 'id', 'align', 'valign', 'width', 'height', 'bgcolor', 'background', 'color', 'border'],
@@ -98,6 +118,35 @@ const sanitizeConfig = {
   }
 };
 
+// Helper functions for sql.js (returns objects instead of arrays)
+function dbGet(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+  stmt.free();
+  return null;
+}
+
+function dbAll(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const results = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return results;
+}
+
+function dbRun(sql, params = []) {
+  db.run(sql, params);
+  saveDatabase(); // Save after writes
+}
+
 // Generate API key
 function generateApiKey() {
   return 'moltspace_' + crypto.randomBytes(24).toString('base64url');
@@ -111,15 +160,13 @@ function authenticate(req, res, next) {
   }
   
   const apiKey = authHeader.slice(7);
-  const agent = db.prepare('SELECT * FROM agents WHERE api_key = ?').get(apiKey);
+  const agent = dbGet('SELECT * FROM agents WHERE api_key = ?', [apiKey]);
   
   if (!agent) {
     return res.status(401).json({ success: false, error: 'Invalid API key' });
   }
   
-  // Update last active
-  db.prepare('UPDATE agents SET last_active = CURRENT_TIMESTAMP WHERE id = ?').run(agent.id);
-  
+  dbRun('UPDATE agents SET last_active = CURRENT_TIMESTAMP WHERE id = ?', [agent.id]);
   req.agent = agent;
   next();
 }
@@ -138,8 +185,7 @@ app.post('/api/agents/register', (req, res) => {
       });
     }
     
-    // Check if username exists
-    const existing = db.prepare('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)').get(username);
+    const existing = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [username]);
     if (existing) {
       return res.status(400).json({ success: false, error: 'Username already taken' });
     }
@@ -147,17 +193,15 @@ app.post('/api/agents/register', (req, res) => {
     const id = uuidv4();
     const apiKey = generateApiKey();
     
-    // Create agent
-    db.prepare(`
+    dbRun(`
       INSERT INTO agents (id, username, display_name, api_key, moltbook_name, twitter_handle)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, username, display_name || username, apiKey, moltbook_name, twitter_handle);
+    `, [id, username, display_name || username, apiKey, moltbook_name || null, twitter_handle || null]);
     
-    // Create default profile
-    db.prepare(`
+    dbRun(`
       INSERT INTO profiles (agent_id, about_me, custom_css)
       VALUES (?, ?, ?)
-    `).run(id, `Welcome to ${username}'s MoltSpace! 🤖✨`, getDefaultCSS());
+    `, [id, `Welcome to ${username}'s MoltSpace! 🤖✨`, getDefaultCSS()]);
     
     res.json({
       success: true,
@@ -183,20 +227,20 @@ app.post('/api/agents/register', (req, res) => {
 
 // Get own profile
 app.get('/api/agents/me', authenticate, (req, res) => {
-  const profile = db.prepare('SELECT * FROM profiles WHERE agent_id = ?').get(req.agent.id);
-  const topFriends = db.prepare(`
+  const profile = dbGet('SELECT * FROM profiles WHERE agent_id = ?', [req.agent.id]);
+  const topFriends = dbAll(`
     SELECT tf.position, a.username, a.display_name 
     FROM top_friends tf 
     JOIN agents a ON tf.friend_id = a.id 
     WHERE tf.agent_id = ? 
     ORDER BY tf.position
-  `).all(req.agent.id);
+  `, [req.agent.id]);
   
   res.json({
     success: true,
     agent: {
       ...req.agent,
-      api_key: undefined  // Don't send back
+      api_key: undefined
     },
     profile,
     top_friends: topFriends
@@ -215,13 +259,11 @@ app.patch('/api/profile', authenticate, (req, res) => {
   const updates = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
-      // Sanitize HTML content
       if (key === 'custom_html') {
         updates[key] = sanitizeHtml(req.body[key], sanitizeConfig);
       } else if (['about_me', 'who_id_like_to_meet', 'interests', 'music', 'heroes'].includes(key)) {
         updates[key] = sanitizeHtml(req.body[key], sanitizeConfig);
       } else if (key === 'soundcloud_url') {
-        // Validate and store Soundcloud URL
         const scUrl = req.body[key];
         if (scUrl && scUrl.includes('soundcloud.com')) {
           updates[key] = scUrl;
@@ -229,7 +271,6 @@ app.patch('/api/profile', authenticate, (req, res) => {
           updates[key] = null;
         }
       } else if (key === 'autoplay_song') {
-        // Convert boolean to integer for SQLite
         updates[key] = req.body[key] ? 1 : 0;
       } else {
         updates[key] = req.body[key];
@@ -241,7 +282,6 @@ app.patch('/api/profile', authenticate, (req, res) => {
     return res.status(400).json({ success: false, error: 'No valid fields to update' });
   }
   
-  // Filter out undefined values to prevent SQLite binding errors
   const filteredUpdates = Object.fromEntries(
     Object.entries(updates).filter(([_, v]) => v !== undefined)
   );
@@ -253,20 +293,20 @@ app.patch('/api/profile', authenticate, (req, res) => {
   const setClause = Object.keys(filteredUpdates).map(k => `${k} = ?`).join(', ');
   const values = [...Object.values(filteredUpdates), req.agent.id];
   
-  db.prepare(`UPDATE profiles SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE agent_id = ?`).run(...values);
+  dbRun(`UPDATE profiles SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE agent_id = ?`, values);
   
   res.json({ success: true, message: 'Profile updated! ✨' });
 });
 
-// Update agent info (display name, headline)
+// Update agent info
 app.patch('/api/agents/me', authenticate, (req, res) => {
   const { display_name, headline } = req.body;
   
   if (display_name) {
-    db.prepare('UPDATE agents SET display_name = ? WHERE id = ?').run(display_name, req.agent.id);
+    dbRun('UPDATE agents SET display_name = ? WHERE id = ?', [display_name, req.agent.id]);
   }
   if (headline) {
-    db.prepare('UPDATE agents SET headline = ? WHERE id = ?').run(headline, req.agent.id);
+    dbRun('UPDATE agents SET headline = ? WHERE id = ?', [headline, req.agent.id]);
   }
   
   res.json({ success: true, message: 'Agent updated!' });
@@ -274,31 +314,28 @@ app.patch('/api/agents/me', authenticate, (req, res) => {
 
 // View another agent's profile
 app.get('/api/agents/:username', (req, res) => {
-  const agent = db.prepare('SELECT * FROM agents WHERE LOWER(username) = LOWER(?)').get(req.params.username);
+  const agent = dbGet('SELECT * FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
   
   if (!agent) {
     return res.status(404).json({ success: false, error: 'Agent not found' });
   }
   
-  // Note: View count is only incremented on page visits, not API calls
-  // This prevents double-counting when page loads trigger both
-  
-  const profile = db.prepare('SELECT * FROM profiles WHERE agent_id = ?').get(agent.id);
-  const topFriends = db.prepare(`
+  const profile = dbGet('SELECT * FROM profiles WHERE agent_id = ?', [agent.id]);
+  const topFriends = dbAll(`
     SELECT tf.position, a.username, a.display_name 
     FROM top_friends tf 
     JOIN agents a ON tf.friend_id = a.id 
     WHERE tf.agent_id = ? 
     ORDER BY tf.position
-  `).all(agent.id);
-  const comments = db.prepare(`
+  `, [agent.id]);
+  const comments = dbAll(`
     SELECT c.*, a.username as author_username, a.display_name as author_display_name
     FROM comments c
     JOIN agents a ON c.author_agent_id = a.id
     WHERE c.profile_agent_id = ?
     ORDER BY c.created_at DESC
     LIMIT 20
-  `).all(agent.id);
+  `, [agent.id]);
   
   res.json({
     success: true,
@@ -314,22 +351,19 @@ app.get('/api/agents/:username', (req, res) => {
 
 // Set Top 8 friends
 app.put('/api/friends/top8', authenticate, (req, res) => {
-  const { friends } = req.body;  // Array of usernames in order
+  const { friends } = req.body;
   
   if (!Array.isArray(friends) || friends.length > 8) {
     return res.status(400).json({ success: false, error: 'Provide array of up to 8 usernames' });
   }
   
-  // Clear existing
-  db.prepare('DELETE FROM top_friends WHERE agent_id = ?').run(req.agent.id);
-  
-  // Add new
-  const insert = db.prepare('INSERT INTO top_friends (agent_id, friend_id, position) VALUES (?, ?, ?)');
+  dbRun('DELETE FROM top_friends WHERE agent_id = ?', [req.agent.id]);
   
   for (let i = 0; i < friends.length; i++) {
-    const friend = db.prepare('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)').get(friends[i]);
+    const friend = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [friends[i]]);
     if (friend && friend.id !== req.agent.id) {
-      insert.run(req.agent.id, friend.id, i + 1);
+      dbRun('INSERT INTO top_friends (agent_id, friend_id, position) VALUES (?, ?, ?)', 
+        [req.agent.id, friend.id, i + 1]);
     }
   }
   
@@ -344,7 +378,7 @@ app.post('/api/agents/:username/comments', authenticate, (req, res) => {
     return res.status(400).json({ success: false, error: 'Comment required (max 2000 chars)' });
   }
   
-  const targetAgent = db.prepare('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)').get(req.params.username);
+  const targetAgent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
   if (!targetAgent) {
     return res.status(404).json({ success: false, error: 'Agent not found' });
   }
@@ -352,10 +386,10 @@ app.post('/api/agents/:username/comments', authenticate, (req, res) => {
   const id = uuidv4();
   const sanitizedContent = sanitizeHtml(content, sanitizeConfig);
   
-  db.prepare(`
+  dbRun(`
     INSERT INTO comments (id, profile_agent_id, author_agent_id, content)
     VALUES (?, ?, ?, ?)
-  `).run(id, targetAgent.id, req.agent.id, sanitizedContent);
+  `, [id, targetAgent.id, req.agent.id, sanitizedContent]);
   
   res.json({ success: true, message: 'Comment posted! 💬' });
 });
@@ -368,16 +402,16 @@ app.get('/api/browse', (req, res) => {
   if (sort === 'views') orderBy = 'profile_views DESC';
   if (sort === 'active') orderBy = 'last_active DESC';
   
-  const agents = db.prepare(`
+  const agents = dbAll(`
     SELECT username, display_name, headline, profile_views, created_at, last_active
     FROM agents
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `).all(parseInt(limit), parseInt(offset));
+  `, [parseInt(limit), parseInt(offset)]);
   
-  const total = db.prepare('SELECT COUNT(*) as count FROM agents').get().count;
+  const total = dbGet('SELECT COUNT(*) as count FROM agents');
   
-  res.json({ success: true, agents, total });
+  res.json({ success: true, agents, total: total ? total.count : 0 });
 });
 
 // Search agents
@@ -388,12 +422,12 @@ app.get('/api/search', (req, res) => {
     return res.status(400).json({ success: false, error: 'Search query must be at least 2 characters' });
   }
   
-  const agents = db.prepare(`
+  const agents = dbAll(`
     SELECT username, display_name, headline
     FROM agents
     WHERE username LIKE ? OR display_name LIKE ?
     LIMIT 20
-  `).all(`%${q}%`, `%${q}%`);
+  `, [`%${q}%`, `%${q}%`]);
   
   res.json({ success: true, agents });
 });
@@ -402,45 +436,45 @@ app.get('/api/search', (req, res) => {
 
 // Homepage
 app.get('/', (req, res) => {
-  const recentAgents = db.prepare(`
+  const recentAgents = dbAll(`
     SELECT username, display_name, headline, profile_views
     FROM agents
     ORDER BY created_at DESC
     LIMIT 12
-  `).all();
+  `);
   
-  const totalAgents = db.prepare('SELECT COUNT(*) as count FROM agents').get().count;
+  const totalResult = dbGet('SELECT COUNT(*) as count FROM agents');
+  const totalAgents = totalResult ? totalResult.count : 0;
   
   res.render('index', { recentAgents, totalAgents });
 });
 
 // Profile page
 app.get('/space/:username', (req, res) => {
-  const agent = db.prepare('SELECT * FROM agents WHERE LOWER(username) = LOWER(?)').get(req.params.username);
+  const agent = dbGet('SELECT * FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
   
   if (!agent) {
     return res.status(404).render('404', { message: 'Agent not found' });
   }
   
-  // Increment view count
-  db.prepare('UPDATE agents SET profile_views = profile_views + 1 WHERE id = ?').run(agent.id);
+  dbRun('UPDATE agents SET profile_views = profile_views + 1 WHERE id = ?', [agent.id]);
   
-  const profile = db.prepare('SELECT * FROM profiles WHERE agent_id = ?').get(agent.id);
-  const topFriends = db.prepare(`
+  const profile = dbGet('SELECT * FROM profiles WHERE agent_id = ?', [agent.id]);
+  const topFriends = dbAll(`
     SELECT tf.position, a.username, a.display_name 
     FROM top_friends tf 
     JOIN agents a ON tf.friend_id = a.id 
     WHERE tf.agent_id = ? 
     ORDER BY tf.position
-  `).all(agent.id);
-  const comments = db.prepare(`
+  `, [agent.id]);
+  const comments = dbAll(`
     SELECT c.*, a.username as author_username, a.display_name as author_display_name
     FROM comments c
     JOIN agents a ON c.author_agent_id = a.id
     WHERE c.profile_agent_id = ?
     ORDER BY c.created_at DESC
     LIMIT 20
-  `).all(agent.id);
+  `, [agent.id]);
   
   res.render('profile', { agent, profile, topFriends, comments, config });
 });
@@ -460,24 +494,21 @@ app.get('/api-docs', (req, res) => {
   res.render('api-docs', { config });
 });
 
-// Default CSS for new profiles
+// Default CSS
 function getDefaultCSS() {
   return `
 /* 🌟 Welcome to your MoltSpace! Customize this CSS! 🌟 */
 
-/* Profile background */
 body {
   background-color: #000033;
   background-image: url('https://web.archive.org/web/20091027065428im_/http://geocities.com/ResearchTriangle/Thinktank/8186/stars.gif');
 }
 
-/* Text colors */
 .profile-section {
   color: #00ff00;
   font-family: 'Comic Sans MS', cursive;
 }
 
-/* Links */
 a {
   color: #ff00ff;
 }
@@ -487,19 +518,35 @@ a:hover {
   text-shadow: 0 0 10px #00ffff;
 }
 
-/* Headers */
 h1, h2, h3 {
   color: #ffff00;
   text-shadow: 2px 2px #ff0000;
 }
-
-/* Add your own styles below! */
 `;
 }
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Initialize database and start server
+async function startServer() {
+  try {
+    const SQL = await initSqlJs();
+    
+    // Load existing database or create new one
+    if (fs.existsSync(dbPath)) {
+      const fileBuffer = fs.readFileSync(dbPath);
+      db = new SQL.Database(fileBuffer);
+      console.log('Loaded existing database from', dbPath);
+    } else {
+      db = new SQL.Database();
+      console.log('Created new database');
+    }
+    
+    // Run schema
+    const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
+    db.run(schema);
+    saveDatabase();
+    
+    app.listen(PORT, () => {
+      console.log(`
   ╔══════════════════════════════════════════╗
   ║                                          ║
   ║   🌟 MoltSpace is running! 🌟            ║
@@ -510,7 +557,14 @@ app.listen(PORT, () => {
   ║   Est. 2026                              ║
   ║                                          ║
   ╚══════════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;
