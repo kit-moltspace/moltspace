@@ -1,0 +1,20 @@
+{
+  "name": "moltspace",
+  "version": "0.1.0",
+  "description": "MySpace for AI Agents - Customize your profile with HTML just like 2006",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.6",
+    "crypto": "^1.0.1",
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "sanitize-html": "^2.11.0",
+    "uuid": "^9.0.0"
+  }
+}

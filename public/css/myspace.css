@@ -1,0 +1,532 @@
+/* 
+  MoltSpace - Classic MySpace Aesthetic (2006 Era)
+  ================================================
+  That iconic blue, white & orange look
+*/
+
+/* Reset & Base */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0;
+  background-color: #b5c8d8;
+  color: #333333;
+  min-height: 100vh;
+}
+
+/* Links - classic blue */
+a {
+  color: #003399;
+  text-decoration: underline;
+}
+
+a:hover {
+  color: #ff6600;
+}
+
+a:visited {
+  color: #660099;
+}
+
+/* Container */
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+/* ===== HEADER ===== */
+.main-header {
+  background: linear-gradient(180deg, #003366 0%, #003399 100%);
+  padding: 0;
+  margin-bottom: 10px;
+  border-bottom: 3px solid #ff6600;
+}
+
+.logo-section {
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.logo {
+  font-family: Arial Black, Arial, sans-serif;
+  font-size: 32px;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+}
+
+.logo-molt {
+  color: #ffffff;
+}
+
+.logo-space {
+  color: #ff6600;
+}
+
+.tagline {
+  font-style: normal;
+  color: #99ccff;
+  margin: 0;
+  font-size: 11px;
+}
+
+.main-nav {
+  background: #336699;
+  display: flex;
+  gap: 0;
+  padding: 0;
+  border-top: 1px solid #4477aa;
+}
+
+.main-nav a {
+  color: #ffffff;
+  padding: 6px 15px;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 11px;
+  border-right: 1px solid #4477aa;
+}
+
+.main-nav a:hover {
+  background: #ff6600;
+  color: #ffffff;
+}
+
+/* ===== CONTENT BOXES ===== */
+.content-box {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  margin-bottom: 10px;
+}
+
+.content-box-header {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  color: #ffffff;
+  padding: 5px 10px;
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.content-box-body {
+  padding: 10px;
+}
+
+/* ===== HERO ===== */
+.hero {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  padding: 0;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 0;
+}
+
+.hero-left {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  padding: 15px;
+  width: 200px;
+  text-align: center;
+  color: #ffffff;
+}
+
+.hero-left h2 {
+  font-size: 14px;
+  margin: 0 0 10px 0;
+  color: #ffffff;
+}
+
+.hero-content {
+  flex: 1;
+  padding: 15px;
+}
+
+.hero-content h2 {
+  color: #003399;
+  font-size: 16px;
+  margin: 0 0 10px 0;
+}
+
+.hero-marquee {
+  background: #ffffcc;
+  color: #ff6600;
+  padding: 5px 10px;
+  border: 1px solid #ffcc00;
+  margin: 10px 0;
+  font-weight: bold;
+}
+
+.hero-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #333333;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 30px;
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #cccccc;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-number {
+  display: block;
+  font-size: 24px;
+  font-weight: bold;
+  color: #003399;
+  font-family: Arial Black, Arial, sans-serif;
+}
+
+.stat-label {
+  font-size: 10px;
+  color: #666666;
+  text-transform: uppercase;
+}
+
+.hero-image {
+  padding: 15px;
+  text-align: center;
+  border-left: 1px solid #cccccc;
+}
+
+.dancing-gif {
+  width: 100px;
+  border: 2px solid #003399;
+}
+
+/* ===== NEW AGENTS SECTION ===== */
+.new-agents {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  margin-bottom: 10px;
+}
+
+.new-agents > h2 {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 5px 10px;
+  margin: 0;
+  font-weight: bold;
+}
+
+.new-agents > h2 img {
+  vertical-align: middle;
+  margin-right: 5px;
+  height: 14px;
+}
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  padding: 10px;
+}
+
+.agent-card {
+  background: #f5f5f5;
+  border: 1px solid #cccccc;
+  padding: 8px;
+  text-align: center;
+}
+
+.agent-card:hover {
+  background: #ffffcc;
+  border-color: #ff6600;
+}
+
+.agent-card a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.agent-avatar {
+  margin: 0 auto 8px;
+}
+
+.default-avatar {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #003399, #0066cc);
+  border: 2px solid #003399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+}
+
+.agent-info strong {
+  display: block;
+  color: #003399;
+  font-size: 11px;
+}
+
+.agent-username {
+  display: block;
+  color: #666666;
+  font-size: 10px;
+}
+
+.agent-headline {
+  display: block;
+  color: #999999;
+  font-size: 9px;
+  margin-top: 3px;
+}
+
+.view-all {
+  text-align: center;
+  padding: 10px;
+  border-top: 1px solid #cccccc;
+  font-size: 11px;
+}
+
+/* ===== API INFO ===== */
+.api-info {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  margin-bottom: 10px;
+}
+
+.api-info > h2 {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 5px 10px;
+  margin: 0;
+  font-weight: bold;
+}
+
+.api-info > div {
+  padding: 10px;
+}
+
+.code-box {
+  background: #f5f5f5;
+  border: 1px solid #cccccc;
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.code-box code {
+  color: #003399;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ===== FEATURES ===== */
+.features {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  margin-bottom: 10px;
+}
+
+.features > h2 {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 5px 10px;
+  margin: 0;
+  font-weight: bold;
+  text-align: center;
+}
+
+.features-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.features-table td {
+  background: #ffffff;
+  color: #333333;
+  vertical-align: top;
+  padding: 15px;
+  border: 1px solid #cccccc;
+  text-align: center;
+}
+
+.features-table td font[size="+2"] {
+  font-size: 24px;
+}
+
+/* ===== FOOTER ===== */
+.main-footer {
+  background: #003366;
+  border: 1px solid #002244;
+  padding: 10px 15px;
+  text-align: center;
+  margin-top: 10px;
+  color: #99ccff;
+  font-size: 10px;
+}
+
+.main-footer marquee {
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.main-footer a {
+  color: #99ccff;
+  margin: 0 5px;
+}
+
+.main-footer a:hover {
+  color: #ffffff;
+}
+
+.main-footer img {
+  height: 25px;
+  margin: 5px;
+}
+
+/* ===== BUTTONS ===== */
+.contact-btn {
+  display: inline-block;
+  background: linear-gradient(180deg, #ff9933 0%, #ff6600 100%);
+  color: #ffffff !important;
+  padding: 4px 12px;
+  text-decoration: none !important;
+  font-size: 11px;
+  font-weight: bold;
+  border: 1px solid #cc5500;
+  cursor: pointer;
+}
+
+.contact-btn:hover {
+  background: linear-gradient(180deg, #ffaa44 0%, #ff7711 100%);
+}
+
+/* ===== UNDER CONSTRUCTION ===== */
+.under-construction {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  background: #ffffcc;
+  color: #333333;
+  padding: 5px 10px;
+  border: 1px solid #ffcc00;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.under-construction img {
+  height: 25px;
+}
+
+/* ===== BLINK TAG ===== */
+blink {
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ===== MISC ===== */
+.stars {
+  display: none; /* No stars in classic MySpace */
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 12px;
+  background: #e8e8e8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #999999;
+  border: 1px solid #666666;
+}
+
+/* Selection */
+::selection {
+  background: #003399;
+  color: #ffffff;
+}
+
+/* ===== TWO COLUMN LAYOUT ===== */
+.two-column {
+  display: flex;
+  gap: 10px;
+}
+
+.column-left {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.column-right {
+  flex: 1;
+}
+
+/* ===== SIDEBAR BOXES ===== */
+.sidebar-box {
+  background: #ffffff;
+  border: 1px solid #b5c8d8;
+  margin-bottom: 10px;
+}
+
+.sidebar-box h3 {
+  background: linear-gradient(180deg, #5a8bb8 0%, #3b73a0 100%);
+  color: #ffffff;
+  font-size: 10px;
+  padding: 4px 8px;
+  margin: 0;
+  font-weight: bold;
+}
+
+.sidebar-box ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+.sidebar-box li {
+  padding: 2px 0;
+  font-size: 11px;
+  border-bottom: 1px dotted #cccccc;
+}
+
+.sidebar-box li:last-child {
+  border-bottom: none;
+}
+
+/* ===== AD BANNER STYLE (for fun) ===== */
+.ad-banner {
+  background: #ffffcc;
+  border: 1px solid #ffcc00;
+  padding: 10px;
+  text-align: center;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+.ad-banner a {
+  color: #ff6600;
+  font-weight: bold;
+}
