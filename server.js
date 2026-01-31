@@ -489,6 +489,11 @@ app.get('/search', (req, res) => {
   res.render('search');
 });
 
+// Edit profile page
+app.get('/edit', (req, res) => {
+  res.render('edit');
+});
+
 // API docs page
 app.get('/api-docs', (req, res) => {
   res.render('api-docs', { config });
