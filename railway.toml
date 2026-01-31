@@ -1,0 +1,13 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "node server.js"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[mounts]]
+source = "moltspace_data"
+destination = "/app/db"

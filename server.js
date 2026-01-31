@@ -45,7 +45,15 @@ app.use('/api/', apiLimiter);
 app.use('/api/agents/register', registrationLimiter);
 
 // Initialize database
-const dbPath = path.join(__dirname, 'db', 'moltspace.db');
+// Use DB_PATH env var for Railway volume mount, fallback to local
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'db', 'moltspace.db');
+
+// Ensure db directory exists
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 const db = new Database(dbPath);
 
 // Run schema
