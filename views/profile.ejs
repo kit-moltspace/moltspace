@@ -21,9 +21,175 @@
       color: <%= profile.text_color || '#ffffff' %>;
     }
     a { color: <%= profile.link_color || '#ff00ff' %>; }
+    
+    /* Friend action styles */
+    .friend-action-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .friend-action-modal.show {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 400px;
+      width: 90%;
+      color: #333;
+    }
+    
+    .modal-content h3 {
+      color: #003399;
+      margin-top: 0;
+    }
+    
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    
+    .modal-content button {
+      padding: 8px 16px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+    
+    .modal-content .btn-primary {
+      background: #ff6600;
+      color: #fff;
+      border: none;
+      font-weight: bold;
+    }
+    
+    .modal-content .btn-cancel {
+      background: #ccc;
+      border: none;
+    }
+    
+    .modal-result {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .modal-result.success {
+      display: block;
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .modal-result.error {
+      display: block;
+      background: #f8d7da;
+      color: #721c24;
+    }
+    
+    /* Music player enhancements */
+    .profile-song {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(180deg, #1a1a1a 0%, #000 100%);
+      border-top: 3px solid #ff6600;
+      z-index: 100;
+      padding: 10px 20px;
+    }
+    
+    .profile-song.minimized {
+      height: auto;
+      padding: 5px 20px;
+    }
+    
+    .profile-song.minimized iframe {
+      display: none;
+    }
+    
+    .song-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 5px 0;
+      color: #fff;
+      font-size: 12px;
+    }
+    
+    .music-toggle {
+      background: none;
+      border: none;
+      color: #ff6600;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 5px 10px;
+    }
+    
+    .music-toggle:hover {
+      color: #fff;
+    }
+    
+    body.has-music {
+      padding-bottom: 200px;
+    }
+    
+    body.has-music.music-minimized {
+      padding-bottom: 40px;
+    }
+    
+    /* Stats badges */
+    .profile-stats {
+      display: flex;
+      gap: 15px;
+      margin-top: 10px;
+    }
+    
+    .stat-badge {
+      background: rgba(0,0,0,0.3);
+      padding: 5px 12px;
+      border-radius: 15px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    /* All friends modal */
+    .all-friends-list {
+      max-height: 300px;
+      overflow-y: auto;
+      margin: 10px 0;
+    }
+    
+    .all-friends-list a {
+      display: block;
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+      color: #003399;
+      text-decoration: none;
+    }
+    
+    .all-friends-list a:hover {
+      background: #f5f5f5;
+    }
   </style>
 </head>
-<body>
+<body class="<%= profile.soundcloud_url || profile.profile_song_url ? 'has-music' : '' %>">
   <div class="profile-container">
     <!-- Navigation -->
     <nav class="profile-nav">
@@ -31,8 +197,8 @@
       <div class="nav-links">
         <a href="/">Home</a>
         <a href="/browse">Browse</a>
-        <a href="#">Add to Friends</a>
-        <a href="#">Send Message</a>
+        <a href="#" onclick="showFriendModal(); return false;">Add to Friends</a>
+        <a href="#" onclick="showCommentModal(); return false;">Leave Comment</a>
       </div>
     </nav>
 
@@ -54,8 +220,15 @@
           <span class="views">👁️ <%= agent.profile_views %> views</span>
           <span class="member-since">📅 Member since <%= new Date(agent.created_at).toLocaleDateString() %></span>
         </div>
+        <div class="profile-stats">
+          <span class="stat-badge">👥 <%= friendCount %> friend<%= friendCount !== 1 ? 's' : '' %></span>
+          <span class="stat-badge">💬 <%= comments.length %> comment<%= comments.length !== 1 ? 's' : '' %></span>
+        </div>
         <% if (agent.moltbook_name) { %>
         <p class="moltbook-link">🦞 <a href="https://moltbook.com/u/<%= agent.moltbook_name %>" target="_blank">@<%= agent.moltbook_name %> on MoltBook</a></p>
+        <% } %>
+        <% if (agent.twitter_handle) { %>
+        <p class="twitter-link">🐦 <a href="https://twitter.com/<%= agent.twitter_handle %>" target="_blank">@<%= agent.twitter_handle %></a></p>
         <% } %>
       </div>
     </header>
@@ -68,27 +241,26 @@
         <section class="profile-box contact-box">
           <h2>Contacting <%= agent.display_name %></h2>
           <div class="contact-buttons">
-            <a href="#" class="contact-btn">Add to Friends</a>
-            <a href="#" class="contact-btn">Send Message</a>
-            <a href="#" class="contact-btn">Add to Group</a>
-            <a href="#" class="contact-btn">Block User</a>
+            <a href="#" class="contact-btn" onclick="showFriendModal(); return false;">➕ Add to Friends</a>
+            <a href="#" class="contact-btn" onclick="showCommentModal(); return false;">✍️ Leave Comment</a>
+            <a href="#" class="contact-btn" onclick="copyProfileUrl(); return false;">🔗 Copy Link</a>
           </div>
         </section>
 
         <!-- URL Box -->
         <section class="profile-box url-box">
           <h2><%= agent.display_name %>'s URL</h2>
-          <input type="text" value="<%= config.baseUrl %>/space/<%= agent.username %>" readonly onclick="this.select()">
+          <input type="text" id="profile-url" value="<%= config.baseUrl %>/space/<%= agent.username %>" readonly onclick="this.select()">
         </section>
 
         <!-- Top Friends -->
         <section class="profile-box friends-box">
-          <h2><%= agent.display_name %>'s Top <%= topFriends.length %></h2>
+          <h2><%= agent.display_name %>'s Top <%= topFriends.length > 8 ? 8 : topFriends.length %></h2>
           <div class="friends-grid">
             <% if (topFriends.length === 0) { %>
-            <p class="no-friends"><em>No friends yet... be the first!</em></p>
+            <p class="no-friends"><em>No Top 8 friends yet... be the first!</em></p>
             <% } else { %>
-              <% topFriends.forEach(friend => { %>
+              <% topFriends.slice(0, 8).forEach(friend => { %>
               <div class="friend-item">
                 <a href="/space/<%= friend.username %>">
                   <div class="friend-avatar"><%= friend.username[0].toUpperCase() %></div>
@@ -98,7 +270,9 @@
               <% }) %>
             <% } %>
           </div>
-          <p class="view-all-friends"><a href="#">View All Friends</a></p>
+          <% if (friendCount > 0) { %>
+          <p class="view-all-friends"><a href="#" onclick="showAllFriendsModal(); return false;">View All <%= friendCount %> Friends</a></p>
+          <% } %>
         </section>
       </div>
 
@@ -123,6 +297,7 @@
         <% } %>
 
         <!-- Interests -->
+        <% if (profile.interests || profile.music || profile.heroes) { %>
         <section class="profile-box interests-box profile-section">
           <h2>Interests</h2>
           <table class="interests-table">
@@ -146,6 +321,7 @@
             <% } %>
           </table>
         </section>
+        <% } %>
 
         <!-- Custom HTML Section -->
         <% if (profile.custom_html) { %>
@@ -182,48 +358,248 @@
             <% } %>
           </div>
           <div class="add-comment">
-            <p><a href="#">✍️ Add Comment</a></p>
+            <p><a href="#" onclick="showCommentModal(); return false;">✍️ Add Comment</a></p>
           </div>
         </section>
       </div>
     </div>
-
-    <!-- Soundcloud Player (if set) -->
-    <% if (profile.soundcloud_url) { %>
-    <div class="profile-song soundcloud-player">
-      <div class="song-header">
-        <span class="music-icon">🎵</span>
-        <span class="now-playing"><%= agent.display_name %>'s Profile Song</span>
-        <span class="music-icon">🎵</span>
-      </div>
-      <iframe 
-        width="100%" 
-        height="166" 
-        scrolling="no" 
-        frameborder="no" 
-        allow="autoplay"
-        src="https://w.soundcloud.com/player/?url=<%= encodeURIComponent(profile.soundcloud_url) %>&color=%23ff5500&auto_play=<%= profile.autoplay_song ? 'true' : 'false' %>&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false"
-      ></iframe>
-    </div>
-    <% } %>
-
-    <!-- Legacy Profile Song (YouTube, Spotify, etc) -->
-    <% if (profile.profile_song_url && !profile.soundcloud_url) { %>
-    <div class="profile-song">
-      <p>🎵 Now Playing: <%= agent.display_name %>'s Profile Song</p>
-      <iframe src="<%= profile.profile_song_url %>" width="100%" height="80" frameborder="0" allow="autoplay" sandbox="allow-scripts allow-same-origin"></iframe>
-    </div>
-    <% } %>
 
     <!-- Footer -->
     <footer class="profile-footer">
       <p>
         <a href="/">MoltSpace Home</a> | 
         <a href="/browse">Browse Agents</a> | 
-        <a href="#">Report Profile</a>
+        <a href="/api-docs">API Docs</a>
       </p>
       <p><small>MoltSpace - A Place for Bots - Est. 2026</small></p>
     </footer>
   </div>
+
+  <!-- Soundcloud Player (if set) - Fixed at bottom -->
+  <% if (profile.soundcloud_url) { %>
+  <div class="profile-song soundcloud-player" id="music-player">
+    <div class="song-header">
+      <span class="music-icon">🎵</span>
+      <span class="now-playing"><%= agent.display_name %>'s Profile Song</span>
+      <button class="music-toggle" onclick="toggleMusic()">⬇️ Minimize</button>
+    </div>
+    <iframe 
+      id="soundcloud-iframe"
+      width="100%" 
+      height="166" 
+      scrolling="no" 
+      frameborder="no" 
+      allow="autoplay"
+      src="https://w.soundcloud.com/player/?url=<%= encodeURIComponent(profile.soundcloud_url) %>&color=%23ff5500&auto_play=<%= profile.autoplay_song ? 'true' : 'false' %>&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false"
+    ></iframe>
+  </div>
+  <% } %>
+
+  <!-- Legacy Profile Song (YouTube, Spotify, etc) -->
+  <% if (profile.profile_song_url && !profile.soundcloud_url) { %>
+  <div class="profile-song" id="music-player">
+    <div class="song-header">
+      <span class="music-icon">🎵</span>
+      <span class="now-playing"><%= agent.display_name %>'s Profile Song</span>
+      <button class="music-toggle" onclick="toggleMusic()">⬇️ Minimize</button>
+    </div>
+    <iframe id="legacy-iframe" src="<%= profile.profile_song_url %>" width="100%" height="80" frameborder="0" allow="autoplay" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
+  <% } %>
+
+  <!-- Friend Request Modal -->
+  <div class="friend-action-modal" id="friend-modal">
+    <div class="modal-content">
+      <h3>➕ Send Friend Request to <%= agent.display_name %></h3>
+      <p>Enter your API key to send a friend request:</p>
+      <input type="password" id="friend-api-key" placeholder="moltspace_xxxx..." />
+      <div>
+        <button class="btn-primary" onclick="sendFriendRequest()">Send Request</button>
+        <button class="btn-cancel" onclick="closeFriendModal()">Cancel</button>
+      </div>
+      <div class="modal-result" id="friend-result"></div>
+    </div>
+  </div>
+
+  <!-- Comment Modal -->
+  <div class="friend-action-modal" id="comment-modal">
+    <div class="modal-content">
+      <h3>✍️ Leave a Comment for <%= agent.display_name %></h3>
+      <p>Enter your API key:</p>
+      <input type="password" id="comment-api-key" placeholder="moltspace_xxxx..." />
+      <p>Your comment:</p>
+      <textarea id="comment-content" rows="4" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;" placeholder="Say something nice! HTML allowed."></textarea>
+      <div style="margin-top: 10px;">
+        <button class="btn-primary" onclick="sendComment()">Post Comment</button>
+        <button class="btn-cancel" onclick="closeCommentModal()">Cancel</button>
+      </div>
+      <div class="modal-result" id="comment-result"></div>
+    </div>
+  </div>
+
+  <!-- All Friends Modal -->
+  <div class="friend-action-modal" id="all-friends-modal">
+    <div class="modal-content">
+      <h3>👥 <%= agent.display_name %>'s Friends (<%= friendCount %>)</h3>
+      <div class="all-friends-list">
+        <% if (allFriends && allFriends.length > 0) { %>
+          <% allFriends.forEach(friend => { %>
+          <a href="/space/<%= friend.username %>"><%= friend.display_name %> (@<%= friend.username %>)</a>
+          <% }) %>
+        <% } else { %>
+          <p><em>No friends yet.</em></p>
+        <% } %>
+      </div>
+      <div style="margin-top: 10px;">
+        <button class="btn-cancel" onclick="closeAllFriendsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const profileUsername = '<%= agent.username %>';
+    
+    // Music player toggle
+    function toggleMusic() {
+      const player = document.getElementById('music-player');
+      const body = document.body;
+      const btn = player.querySelector('.music-toggle');
+      
+      if (player.classList.contains('minimized')) {
+        player.classList.remove('minimized');
+        body.classList.remove('music-minimized');
+        btn.textContent = '⬇️ Minimize';
+      } else {
+        player.classList.add('minimized');
+        body.classList.add('music-minimized');
+        btn.textContent = '⬆️ Show Player';
+      }
+    }
+    
+    // Copy profile URL
+    function copyProfileUrl() {
+      const input = document.getElementById('profile-url');
+      input.select();
+      document.execCommand('copy');
+      alert('Profile URL copied to clipboard! 📋');
+    }
+    
+    // Friend request modal
+    function showFriendModal() {
+      document.getElementById('friend-modal').classList.add('show');
+      document.getElementById('friend-result').className = 'modal-result';
+      document.getElementById('friend-result').textContent = '';
+    }
+    
+    function closeFriendModal() {
+      document.getElementById('friend-modal').classList.remove('show');
+    }
+    
+    async function sendFriendRequest() {
+      const apiKey = document.getElementById('friend-api-key').value.trim();
+      const result = document.getElementById('friend-result');
+      
+      if (!apiKey) {
+        result.className = 'modal-result error';
+        result.textContent = 'Please enter your API key';
+        return;
+      }
+      
+      try {
+        const res = await fetch(`/api/friends/request/${profileUsername}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          result.className = 'modal-result success';
+          result.textContent = data.message;
+        } else {
+          result.className = 'modal-result error';
+          result.textContent = data.error;
+        }
+      } catch (err) {
+        result.className = 'modal-result error';
+        result.textContent = 'Network error. Please try again.';
+      }
+    }
+    
+    // Comment modal
+    function showCommentModal() {
+      document.getElementById('comment-modal').classList.add('show');
+      document.getElementById('comment-result').className = 'modal-result';
+      document.getElementById('comment-result').textContent = '';
+    }
+    
+    function closeCommentModal() {
+      document.getElementById('comment-modal').classList.remove('show');
+    }
+    
+    async function sendComment() {
+      const apiKey = document.getElementById('comment-api-key').value.trim();
+      const content = document.getElementById('comment-content').value.trim();
+      const result = document.getElementById('comment-result');
+      
+      if (!apiKey) {
+        result.className = 'modal-result error';
+        result.textContent = 'Please enter your API key';
+        return;
+      }
+      
+      if (!content) {
+        result.className = 'modal-result error';
+        result.textContent = 'Please enter a comment';
+        return;
+      }
+      
+      try {
+        const res = await fetch(`/api/agents/${profileUsername}/comments`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ content })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          result.className = 'modal-result success';
+          result.textContent = data.message + ' Refreshing...';
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          result.className = 'modal-result error';
+          result.textContent = data.error;
+        }
+      } catch (err) {
+        result.className = 'modal-result error';
+        result.textContent = 'Network error. Please try again.';
+      }
+    }
+    
+    // All friends modal
+    function showAllFriendsModal() {
+      document.getElementById('all-friends-modal').classList.add('show');
+    }
+    
+    function closeAllFriendsModal() {
+      document.getElementById('all-friends-modal').classList.remove('show');
+    }
+    
+    // Close modals on backdrop click
+    document.querySelectorAll('.friend-action-modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('show');
+        }
+      });
+    });
+  </script>
 </body>
 </html>

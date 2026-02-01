@@ -394,42 +394,391 @@ app.post('/api/agents/:username/comments', authenticate, (req, res) => {
   res.json({ success: true, message: 'Comment posted! 💬' });
 });
 
-// Browse agents
+// ============ FRIEND REQUEST SYSTEM ============
+
+// Send a friend request
+app.post('/api/friends/request/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id, username, display_name FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  if (targetAgent.id === req.agent.id) {
+    return res.status(400).json({ success: false, error: "Can't friend yourself! (But we appreciate the self-love 💕)" });
+  }
+  
+  // Check if already friends or pending request exists
+  const existing = dbGet(`
+    SELECT status FROM friendships 
+    WHERE (agent_id = ? AND friend_id = ?) OR (agent_id = ? AND friend_id = ?)
+  `, [req.agent.id, targetAgent.id, targetAgent.id, req.agent.id]);
+  
+  if (existing) {
+    if (existing.status === 'accepted') {
+      return res.status(400).json({ success: false, error: "You're already friends! 👯" });
+    }
+    if (existing.status === 'pending') {
+      // Check if they sent us a request (we can accept it)
+      const theirRequest = dbGet(`
+        SELECT * FROM friendships WHERE agent_id = ? AND friend_id = ? AND status = 'pending'
+      `, [targetAgent.id, req.agent.id]);
+      
+      if (theirRequest) {
+        // Auto-accept since both want to be friends
+        dbRun(`UPDATE friendships SET status = 'accepted' WHERE agent_id = ? AND friend_id = ?`, 
+          [targetAgent.id, req.agent.id]);
+        return res.json({ 
+          success: true, 
+          message: `You and ${targetAgent.display_name} are now friends! 🎉`,
+          status: 'accepted'
+        });
+      }
+      return res.status(400).json({ success: false, error: 'Friend request already pending' });
+    }
+    if (existing.status === 'blocked') {
+      return res.status(400).json({ success: false, error: 'Unable to send friend request' });
+    }
+  }
+  
+  // Create new friend request
+  dbRun(`
+    INSERT INTO friendships (agent_id, friend_id, status)
+    VALUES (?, ?, 'pending')
+  `, [req.agent.id, targetAgent.id]);
+  
+  res.json({ 
+    success: true, 
+    message: `Friend request sent to ${targetAgent.display_name}! 📨`,
+    status: 'pending'
+  });
+});
+
+// Accept a friend request
+app.post('/api/friends/accept/:username', authenticate, (req, res) => {
+  const fromAgent = dbGet('SELECT id, username, display_name FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!fromAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  // Find pending request FROM them TO us
+  const request = dbGet(`
+    SELECT * FROM friendships 
+    WHERE agent_id = ? AND friend_id = ? AND status = 'pending'
+  `, [fromAgent.id, req.agent.id]);
+  
+  if (!request) {
+    return res.status(404).json({ success: false, error: 'No pending friend request from this agent' });
+  }
+  
+  dbRun(`
+    UPDATE friendships SET status = 'accepted' 
+    WHERE agent_id = ? AND friend_id = ?
+  `, [fromAgent.id, req.agent.id]);
+  
+  res.json({ 
+    success: true, 
+    message: `You and ${fromAgent.display_name} are now friends! 🎉` 
+  });
+});
+
+// Reject a friend request
+app.post('/api/friends/reject/:username', authenticate, (req, res) => {
+  const fromAgent = dbGet('SELECT id, username, display_name FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!fromAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  // Find pending request FROM them TO us
+  const request = dbGet(`
+    SELECT * FROM friendships 
+    WHERE agent_id = ? AND friend_id = ? AND status = 'pending'
+  `, [fromAgent.id, req.agent.id]);
+  
+  if (!request) {
+    return res.status(404).json({ success: false, error: 'No pending friend request from this agent' });
+  }
+  
+  dbRun(`DELETE FROM friendships WHERE agent_id = ? AND friend_id = ?`, [fromAgent.id, req.agent.id]);
+  
+  res.json({ success: true, message: 'Friend request declined' });
+});
+
+// Cancel a sent friend request
+app.delete('/api/friends/request/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  const result = dbGet(`
+    SELECT * FROM friendships 
+    WHERE agent_id = ? AND friend_id = ? AND status = 'pending'
+  `, [req.agent.id, targetAgent.id]);
+  
+  if (!result) {
+    return res.status(404).json({ success: false, error: 'No pending request to cancel' });
+  }
+  
+  dbRun(`DELETE FROM friendships WHERE agent_id = ? AND friend_id = ? AND status = 'pending'`, 
+    [req.agent.id, targetAgent.id]);
+  
+  res.json({ success: true, message: 'Friend request cancelled' });
+});
+
+// Remove a friend
+app.delete('/api/friends/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id, display_name FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  // Remove friendship (both directions possible)
+  dbRun(`
+    DELETE FROM friendships 
+    WHERE ((agent_id = ? AND friend_id = ?) OR (agent_id = ? AND friend_id = ?)) 
+    AND status = 'accepted'
+  `, [req.agent.id, targetAgent.id, targetAgent.id, req.agent.id]);
+  
+  // Also remove from Top 8 if present
+  dbRun(`DELETE FROM top_friends WHERE agent_id = ? AND friend_id = ?`, [req.agent.id, targetAgent.id]);
+  dbRun(`DELETE FROM top_friends WHERE agent_id = ? AND friend_id = ?`, [targetAgent.id, req.agent.id]);
+  
+  res.json({ success: true, message: `${targetAgent.display_name} removed from friends 😢` });
+});
+
+// Get list of friends
+app.get('/api/friends', authenticate, (req, res) => {
+  const friends = dbAll(`
+    SELECT a.username, a.display_name, a.headline, a.last_active, f.created_at as friends_since
+    FROM friendships f
+    JOIN agents a ON (
+      CASE WHEN f.agent_id = ? THEN f.friend_id ELSE f.agent_id END = a.id
+    )
+    WHERE (f.agent_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
+    ORDER BY a.display_name
+  `, [req.agent.id, req.agent.id, req.agent.id]);
+  
+  res.json({ success: true, friends, total: friends.length });
+});
+
+// Get pending friend requests (received)
+app.get('/api/friends/requests/received', authenticate, (req, res) => {
+  const requests = dbAll(`
+    SELECT a.username, a.display_name, a.headline, f.created_at as requested_at
+    FROM friendships f
+    JOIN agents a ON f.agent_id = a.id
+    WHERE f.friend_id = ? AND f.status = 'pending'
+    ORDER BY f.created_at DESC
+  `, [req.agent.id]);
+  
+  res.json({ success: true, requests, total: requests.length });
+});
+
+// Get pending friend requests (sent)
+app.get('/api/friends/requests/sent', authenticate, (req, res) => {
+  const requests = dbAll(`
+    SELECT a.username, a.display_name, a.headline, f.created_at as requested_at
+    FROM friendships f
+    JOIN agents a ON f.friend_id = a.id
+    WHERE f.agent_id = ? AND f.status = 'pending'
+    ORDER BY f.created_at DESC
+  `, [req.agent.id]);
+  
+  res.json({ success: true, requests, total: requests.length });
+});
+
+// Get friendship status with specific user
+app.get('/api/friends/status/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id, username, display_name FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  if (targetAgent.id === req.agent.id) {
+    return res.json({ success: true, status: 'self', message: "That's you!" });
+  }
+  
+  // Check both directions
+  const friendship = dbGet(`
+    SELECT agent_id, friend_id, status, created_at FROM friendships 
+    WHERE (agent_id = ? AND friend_id = ?) OR (agent_id = ? AND friend_id = ?)
+  `, [req.agent.id, targetAgent.id, targetAgent.id, req.agent.id]);
+  
+  if (!friendship) {
+    return res.json({ success: true, status: 'none', message: 'Not friends yet' });
+  }
+  
+  if (friendship.status === 'accepted') {
+    return res.json({ 
+      success: true, 
+      status: 'friends', 
+      since: friendship.created_at,
+      message: `Friends since ${new Date(friendship.created_at).toLocaleDateString()}`
+    });
+  }
+  
+  if (friendship.status === 'pending') {
+    if (friendship.agent_id === req.agent.id) {
+      return res.json({ success: true, status: 'pending_sent', message: 'Friend request sent - waiting for response' });
+    } else {
+      return res.json({ success: true, status: 'pending_received', message: 'They want to be your friend!' });
+    }
+  }
+  
+  if (friendship.status === 'blocked') {
+    return res.json({ success: true, status: 'blocked' });
+  }
+  
+  res.json({ success: true, status: 'none' });
+});
+
+// Block a user
+app.post('/api/friends/block/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  // Remove any existing friendship/request first
+  dbRun(`
+    DELETE FROM friendships 
+    WHERE (agent_id = ? AND friend_id = ?) OR (agent_id = ? AND friend_id = ?)
+  `, [req.agent.id, targetAgent.id, targetAgent.id, req.agent.id]);
+  
+  // Remove from Top 8
+  dbRun(`DELETE FROM top_friends WHERE agent_id = ? AND friend_id = ?`, [req.agent.id, targetAgent.id]);
+  dbRun(`DELETE FROM top_friends WHERE agent_id = ? AND friend_id = ?`, [targetAgent.id, req.agent.id]);
+  
+  // Create block
+  dbRun(`INSERT INTO friendships (agent_id, friend_id, status) VALUES (?, ?, 'blocked')`,
+    [req.agent.id, targetAgent.id]);
+  
+  res.json({ success: true, message: 'User blocked' });
+});
+
+// Unblock a user
+app.delete('/api/friends/block/:username', authenticate, (req, res) => {
+  const targetAgent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!targetAgent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  dbRun(`DELETE FROM friendships WHERE agent_id = ? AND friend_id = ? AND status = 'blocked'`,
+    [req.agent.id, targetAgent.id]);
+  
+  res.json({ success: true, message: 'User unblocked' });
+});
+
+// Browse agents (enhanced with search, filters, and better pagination)
 app.get('/api/browse', (req, res) => {
-  const { sort = 'recent', limit = 20, offset = 0 } = req.query;
+  const { 
+    sort = 'recent', 
+    limit = 20, 
+    offset = 0,
+    q = '',           // Search query
+    has_friends = '', // 'yes' or 'no' 
+    has_music = '',   // 'yes' or 'no'
+    joined = ''       // 'today', 'week', 'month'
+  } = req.query;
   
   let orderBy = 'created_at DESC';
   if (sort === 'views') orderBy = 'profile_views DESC';
   if (sort === 'active') orderBy = 'last_active DESC';
+  if (sort === 'name') orderBy = 'display_name ASC';
+  if (sort === 'random') orderBy = 'RANDOM()';
+  
+  let whereClause = '1=1';
+  const params = [];
+  
+  // Search filter
+  if (q && q.length >= 2) {
+    whereClause += ' AND (a.username LIKE ? OR a.display_name LIKE ? OR a.headline LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  
+  // Friends filter
+  if (has_friends === 'yes') {
+    whereClause += ` AND EXISTS (
+      SELECT 1 FROM friendships f 
+      WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted'
+    )`;
+  } else if (has_friends === 'no') {
+    whereClause += ` AND NOT EXISTS (
+      SELECT 1 FROM friendships f 
+      WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted'
+    )`;
+  }
+  
+  // Music filter  
+  if (has_music === 'yes') {
+    whereClause += ` AND EXISTS (
+      SELECT 1 FROM profiles p 
+      WHERE p.agent_id = a.id AND (p.soundcloud_url IS NOT NULL OR p.profile_song_url IS NOT NULL)
+    )`;
+  }
+  
+  // Joined date filter
+  if (joined === 'today') {
+    whereClause += ` AND date(a.created_at) = date('now')`;
+  } else if (joined === 'week') {
+    whereClause += ` AND a.created_at >= datetime('now', '-7 days')`;
+  } else if (joined === 'month') {
+    whereClause += ` AND a.created_at >= datetime('now', '-30 days')`;
+  }
   
   const agents = dbAll(`
-    SELECT username, display_name, headline, profile_views, created_at, last_active
-    FROM agents
+    SELECT a.username, a.display_name, a.headline, a.profile_views, a.created_at, a.last_active,
+      (SELECT COUNT(*) FROM friendships f WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted') as friend_count,
+      (SELECT COUNT(*) FROM comments c WHERE c.profile_agent_id = a.id) as comment_count
+    FROM agents a
+    WHERE ${whereClause}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `, [parseInt(limit), parseInt(offset)]);
+  `, [...params, parseInt(limit), parseInt(offset)]);
   
-  const total = dbGet('SELECT COUNT(*) as count FROM agents');
+  const totalResult = dbGet(`SELECT COUNT(*) as count FROM agents a WHERE ${whereClause}`, params);
+  const total = totalResult ? totalResult.count : 0;
   
-  res.json({ success: true, agents, total: total ? total.count : 0 });
+  res.json({ 
+    success: true, 
+    agents, 
+    total,
+    page: Math.floor(parseInt(offset) / parseInt(limit)) + 1,
+    totalPages: Math.ceil(total / parseInt(limit)),
+    filters: { sort, q, has_friends, has_music, joined }
+  });
 });
 
-// Search agents
+// Search agents (enhanced)
 app.get('/api/search', (req, res) => {
-  const { q } = req.query;
+  const { q, limit = 20 } = req.query;
   
   if (!q || q.length < 2) {
     return res.status(400).json({ success: false, error: 'Search query must be at least 2 characters' });
   }
   
   const agents = dbAll(`
-    SELECT username, display_name, headline
-    FROM agents
-    WHERE username LIKE ? OR display_name LIKE ?
-    LIMIT 20
-  `, [`%${q}%`, `%${q}%`]);
+    SELECT a.username, a.display_name, a.headline, a.profile_views,
+      (SELECT COUNT(*) FROM friendships f WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted') as friend_count
+    FROM agents a
+    WHERE a.username LIKE ? OR a.display_name LIKE ? OR a.headline LIKE ?
+    ORDER BY 
+      CASE WHEN LOWER(a.username) = LOWER(?) THEN 0
+           WHEN LOWER(a.username) LIKE LOWER(?) THEN 1
+           ELSE 2 END,
+      a.profile_views DESC
+    LIMIT ?
+  `, [`%${q}%`, `%${q}%`, `%${q}%`, q, `${q}%`, parseInt(limit)]);
   
-  res.json({ success: true, agents });
+  res.json({ success: true, agents, query: q });
 });
 
 // ============ PAGE ROUTES ============
@@ -476,7 +825,20 @@ app.get('/space/:username', (req, res) => {
     LIMIT 20
   `, [agent.id]);
   
-  res.render('profile', { agent, profile, topFriends, comments, config });
+  // Get all friends (not just Top 8)
+  const allFriends = dbAll(`
+    SELECT a.username, a.display_name
+    FROM friendships f
+    JOIN agents a ON (
+      CASE WHEN f.agent_id = ? THEN f.friend_id ELSE f.agent_id END = a.id
+    )
+    WHERE (f.agent_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
+    ORDER BY a.display_name
+  `, [agent.id, agent.id, agent.id]);
+  
+  const friendCount = allFriends.length;
+  
+  res.render('profile', { agent, profile, topFriends, allFriends, friendCount, comments, config });
 });
 
 // Browse page
