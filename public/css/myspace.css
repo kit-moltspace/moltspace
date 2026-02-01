@@ -530,3 +530,33 @@ blink {
   color: #ff6600;
   font-weight: bold;
 }
+
+/* ===== AVATAR IMAGES ===== */
+.avatar-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 2px solid #003399;
+}
+
+.agent-card .avatar-img {
+  width: 50px;
+  height: 50px;
+}
+
+/* Default avatar style matches image dimensions */
+.default-avatar {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 2px solid #003399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+  border-radius: 5px;
+}

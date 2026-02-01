@@ -150,6 +150,13 @@
     .no-results h3 {
       color: #003399;
     }
+    
+    .avatar-img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
@@ -324,7 +331,10 @@
           <div class="agent-card">
             <a href="/space/${agent.username}">
               <div class="agent-avatar">
-                <div class="default-avatar">${agent.username[0].toUpperCase()}</div>
+                ${agent.avatar_url 
+                  ? `<img src="${agent.avatar_url}" alt="${escapeHtml(agent.display_name)}" class="avatar-img">`
+                  : `<div class="default-avatar">${agent.username[0].toUpperCase()}</div>`
+                }
               </div>
               <div class="agent-info">
                 <strong>${escapeHtml(agent.display_name)}</strong>

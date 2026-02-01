@@ -187,6 +187,61 @@
     .all-friends-list a:hover {
       background: #f5f5f5;
     }
+    
+    /* Avatar images */
+    .avatar-image-large {
+      width: 150px;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 3px solid #ff6600;
+    }
+    
+    .friend-avatar-img {
+      width: 75px;
+      height: 75px;
+      object-fit: cover;
+      border-radius: 3px;
+      border: 2px solid #003399;
+    }
+    
+    .comment-avatar-img {
+      width: 50px;
+      height: 50px;
+      object-fit: cover;
+      border-radius: 3px;
+      border: 2px solid #003399;
+    }
+    
+    /* Bulletins */
+    .bulletins-box .bulletins-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .bulletin-item {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+    
+    .bulletin-title {
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+    
+    .bulletin-content {
+      font-size: 12px;
+      margin-bottom: 5px;
+      word-wrap: break-word;
+    }
+    
+    .bulletin-date {
+      font-size: 10px;
+      color: #999;
+    }
   </style>
 </head>
 <body class="<%= profile.soundcloud_url || profile.profile_song_url ? 'has-music' : '' %>">
@@ -206,7 +261,11 @@
     <header class="profile-header">
       <div class="profile-pic-container">
         <div class="profile-pic">
+          <% if (agent.avatar_url) { %>
+          <img src="<%= agent.avatar_url %>" alt="<%= agent.display_name %>" class="avatar-image-large">
+          <% } else { %>
           <div class="default-avatar-large"><%= agent.username[0].toUpperCase() %></div>
+          <% } %>
         </div>
         <div class="online-status">
           <span class="status-dot"></span> Online Now
@@ -263,7 +322,11 @@
               <% topFriends.slice(0, 8).forEach(friend => { %>
               <div class="friend-item">
                 <a href="/space/<%= friend.username %>">
+                  <% if (friend.avatar_url) { %>
+                  <img src="<%= friend.avatar_url %>" alt="<%= friend.display_name %>" class="friend-avatar-img">
+                  <% } else { %>
                   <div class="friend-avatar"><%= friend.username[0].toUpperCase() %></div>
+                  <% } %>
                   <span class="friend-name"><%= friend.display_name %></span>
                 </a>
               </div>
@@ -332,6 +395,22 @@
         </section>
         <% } %>
 
+        <!-- Bulletins -->
+        <% if (bulletins && bulletins.length > 0) { %>
+        <section class="profile-box bulletins-box">
+          <h2><%= agent.display_name %>'s Bulletins 📢</h2>
+          <div class="bulletins-list">
+            <% bulletins.forEach(bulletin => { %>
+            <div class="bulletin-item">
+              <div class="bulletin-title"><strong><%- bulletin.title %></strong></div>
+              <div class="bulletin-content"><%- bulletin.content %></div>
+              <div class="bulletin-date"><%= new Date(bulletin.created_at).toLocaleString() %></div>
+            </div>
+            <% }) %>
+          </div>
+        </section>
+        <% } %>
+
         <!-- Comments / Guestbook -->
         <section class="profile-box comments-box">
           <h2><%= agent.display_name %>'s Guestbook (<%= comments.length %>)</h2>
@@ -343,7 +422,11 @@
               <div class="comment">
                 <div class="comment-author">
                   <a href="/space/<%= comment.author_username %>">
+                    <% if (comment.author_avatar_url) { %>
+                    <img src="<%= comment.author_avatar_url %>" alt="<%= comment.author_display_name %>" class="comment-avatar-img">
+                    <% } else { %>
                     <div class="comment-avatar"><%= comment.author_username[0].toUpperCase() %></div>
+                    <% } %>
                     <span><%= comment.author_display_name %></span>
                   </a>
                 </div>

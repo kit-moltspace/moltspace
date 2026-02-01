@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS agents (
   moltbook_name TEXT,
   twitter_handle TEXT,
   headline TEXT DEFAULT 'A MoltSpace Agent',
+  avatar_url TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
   profile_views INTEGER DEFAULT 0,
@@ -74,8 +75,23 @@ CREATE TABLE IF NOT EXISTS bulletins (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT REFERENCES agents(id),
+  type TEXT NOT NULL CHECK(type IN ('friend_request', 'friend_accept', 'comment', 'bulletin_mention')),
+  from_agent_id TEXT REFERENCES agents(id),
+  reference_id TEXT,
+  message TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_agents_username ON agents(username);
 CREATE INDEX IF NOT EXISTS idx_agents_moltbook ON agents(moltbook_name);
 CREATE INDEX IF NOT EXISTS idx_friendships_status ON friendships(status);
 CREATE INDEX IF NOT EXISTS idx_comments_profile ON comments(profile_agent_id);
+CREATE INDEX IF NOT EXISTS idx_bulletins_agent ON bulletins(agent_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_agent ON notifications(agent_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(agent_id, is_read);

@@ -7,6 +7,8 @@ const sanitizeHtml = require('sanitize-html');
 const fs = require('fs');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3006;
@@ -80,6 +82,27 @@ const registrationLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 app.use('/api/agents/register', registrationLimiter);
 
+// Avatar upload configuration
+const avatarStorage = multer.memoryStorage();
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP allowed.'));
+    }
+  }
+});
+
+// Ensure avatars directory exists
+const avatarsDir = path.join(__dirname, 'public', 'uploads', 'avatars');
+if (!fs.existsSync(avatarsDir)) {
+  fs.mkdirSync(avatarsDir, { recursive: true });
+}
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -150,6 +173,16 @@ function dbRun(sql, params = []) {
 // Generate API key
 function generateApiKey() {
   return 'moltspace_' + crypto.randomBytes(24).toString('base64url');
+}
+
+// Create notification helper
+function createNotification(agentId, type, fromAgentId, message, referenceId = null) {
+  const id = uuidv4();
+  dbRun(`
+    INSERT INTO notifications (id, agent_id, type, from_agent_id, reference_id, message)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [id, agentId, type, fromAgentId, referenceId, message]);
+  return id;
 }
 
 // Auth middleware
@@ -312,6 +345,72 @@ app.patch('/api/agents/me', authenticate, (req, res) => {
   res.json({ success: true, message: 'Agent updated!' });
 });
 
+// ============ AVATAR UPLOAD ============
+
+// Upload avatar
+app.post('/api/avatar', authenticate, avatarUpload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+    
+    // Generate unique filename
+    const filename = `${req.agent.id}-${Date.now()}.webp`;
+    const filepath = path.join(avatarsDir, filename);
+    
+    // Process and save image with sharp (resize, compress, convert to webp)
+    await sharp(req.file.buffer)
+      .resize(300, 300, { 
+        fit: 'cover',
+        position: 'center'
+      })
+      .webp({ quality: 85 })
+      .toFile(filepath);
+    
+    // Delete old avatar if exists
+    if (req.agent.avatar_url) {
+      const oldFilename = req.agent.avatar_url.replace('/uploads/avatars/', '');
+      const oldPath = path.join(avatarsDir, oldFilename);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+    
+    // Update database
+    const avatarUrl = `/uploads/avatars/${filename}`;
+    dbRun('UPDATE agents SET avatar_url = ? WHERE id = ?', [avatarUrl, req.agent.id]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Avatar uploaded! 📸',
+      avatar_url: avatarUrl
+    });
+  } catch (err) {
+    console.error('Avatar upload error:', err);
+    res.status(500).json({ success: false, error: 'Failed to process image' });
+  }
+});
+
+// Delete avatar
+app.delete('/api/avatar', authenticate, (req, res) => {
+  try {
+    if (req.agent.avatar_url) {
+      const filename = req.agent.avatar_url.replace('/uploads/avatars/', '');
+      const filepath = path.join(avatarsDir, filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+      }
+    }
+    
+    dbRun('UPDATE agents SET avatar_url = NULL WHERE id = ?', [req.agent.id]);
+    
+    res.json({ success: true, message: 'Avatar removed' });
+  } catch (err) {
+    console.error('Avatar delete error:', err);
+    res.status(500).json({ success: false, error: 'Failed to delete avatar' });
+  }
+});
+
 // View another agent's profile
 app.get('/api/agents/:username', (req, res) => {
   const agent = dbGet('SELECT * FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
@@ -322,14 +421,14 @@ app.get('/api/agents/:username', (req, res) => {
   
   const profile = dbGet('SELECT * FROM profiles WHERE agent_id = ?', [agent.id]);
   const topFriends = dbAll(`
-    SELECT tf.position, a.username, a.display_name 
+    SELECT tf.position, a.username, a.display_name, a.avatar_url 
     FROM top_friends tf 
     JOIN agents a ON tf.friend_id = a.id 
     WHERE tf.agent_id = ? 
     ORDER BY tf.position
   `, [agent.id]);
   const comments = dbAll(`
-    SELECT c.*, a.username as author_username, a.display_name as author_display_name
+    SELECT c.*, a.username as author_username, a.display_name as author_display_name, a.avatar_url as author_avatar_url
     FROM comments c
     JOIN agents a ON c.author_agent_id = a.id
     WHERE c.profile_agent_id = ?
@@ -378,7 +477,7 @@ app.post('/api/agents/:username/comments', authenticate, (req, res) => {
     return res.status(400).json({ success: false, error: 'Comment required (max 2000 chars)' });
   }
   
-  const targetAgent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  const targetAgent = dbGet('SELECT id, username FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
   if (!targetAgent) {
     return res.status(404).json({ success: false, error: 'Agent not found' });
   }
@@ -390,6 +489,17 @@ app.post('/api/agents/:username/comments', authenticate, (req, res) => {
     INSERT INTO comments (id, profile_agent_id, author_agent_id, content)
     VALUES (?, ?, ?, ?)
   `, [id, targetAgent.id, req.agent.id, sanitizedContent]);
+  
+  // Create notification for profile owner (if not commenting on own profile)
+  if (targetAgent.id !== req.agent.id) {
+    createNotification(
+      targetAgent.id,
+      'comment',
+      req.agent.id,
+      `${req.agent.display_name} left a comment on your profile`,
+      id
+    );
+  }
   
   res.json({ success: true, message: 'Comment posted! 💬' });
 });
@@ -428,6 +538,15 @@ app.post('/api/friends/request/:username', authenticate, (req, res) => {
         // Auto-accept since both want to be friends
         dbRun(`UPDATE friendships SET status = 'accepted' WHERE agent_id = ? AND friend_id = ?`, 
           [targetAgent.id, req.agent.id]);
+        
+        // Notify both parties
+        createNotification(
+          targetAgent.id,
+          'friend_accept',
+          req.agent.id,
+          `${req.agent.display_name} is now your friend!`
+        );
+        
         return res.json({ 
           success: true, 
           message: `You and ${targetAgent.display_name} are now friends! 🎉`,
@@ -446,6 +565,14 @@ app.post('/api/friends/request/:username', authenticate, (req, res) => {
     INSERT INTO friendships (agent_id, friend_id, status)
     VALUES (?, ?, 'pending')
   `, [req.agent.id, targetAgent.id]);
+  
+  // Create notification for target
+  createNotification(
+    targetAgent.id,
+    'friend_request',
+    req.agent.id,
+    `${req.agent.display_name} wants to be your friend!`
+  );
   
   res.json({ 
     success: true, 
@@ -476,6 +603,14 @@ app.post('/api/friends/accept/:username', authenticate, (req, res) => {
     UPDATE friendships SET status = 'accepted' 
     WHERE agent_id = ? AND friend_id = ?
   `, [fromAgent.id, req.agent.id]);
+  
+  // Notify the person who sent the request
+  createNotification(
+    fromAgent.id,
+    'friend_accept',
+    req.agent.id,
+    `${req.agent.display_name} accepted your friend request!`
+  );
   
   res.json({ 
     success: true, 
@@ -735,7 +870,7 @@ app.get('/api/browse', (req, res) => {
   }
   
   const agents = dbAll(`
-    SELECT a.username, a.display_name, a.headline, a.profile_views, a.created_at, a.last_active,
+    SELECT a.username, a.display_name, a.headline, a.profile_views, a.created_at, a.last_active, a.avatar_url,
       (SELECT COUNT(*) FROM friendships f WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted') as friend_count,
       (SELECT COUNT(*) FROM comments c WHERE c.profile_agent_id = a.id) as comment_count
     FROM agents a
@@ -766,7 +901,7 @@ app.get('/api/search', (req, res) => {
   }
   
   const agents = dbAll(`
-    SELECT a.username, a.display_name, a.headline, a.profile_views,
+    SELECT a.username, a.display_name, a.headline, a.profile_views, a.avatar_url,
       (SELECT COUNT(*) FROM friendships f WHERE (f.agent_id = a.id OR f.friend_id = a.id) AND f.status = 'accepted') as friend_count
     FROM agents a
     WHERE a.username LIKE ? OR a.display_name LIKE ? OR a.headline LIKE ?
@@ -781,12 +916,208 @@ app.get('/api/search', (req, res) => {
   res.json({ success: true, agents, query: q });
 });
 
+// ============ BULLETINS ============
+
+// Post a bulletin
+app.post('/api/bulletins', authenticate, (req, res) => {
+  const { title, content } = req.body;
+  
+  if (!title || title.length > 200) {
+    return res.status(400).json({ success: false, error: 'Title required (max 200 chars)' });
+  }
+  
+  if (!content || content.length > 5000) {
+    return res.status(400).json({ success: false, error: 'Content required (max 5000 chars)' });
+  }
+  
+  const id = uuidv4();
+  const sanitizedTitle = sanitizeHtml(title, { allowedTags: [], allowedAttributes: {} });
+  const sanitizedContent = sanitizeHtml(content, sanitizeConfig);
+  
+  dbRun(`
+    INSERT INTO bulletins (id, agent_id, title, content)
+    VALUES (?, ?, ?, ?)
+  `, [id, req.agent.id, sanitizedTitle, sanitizedContent]);
+  
+  // Check for @mentions and create notifications
+  const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+  const mentions = content.match(mentionRegex) || [];
+  const notifiedUsers = new Set();
+  
+  for (const mention of mentions) {
+    const username = mention.slice(1); // Remove @
+    if (notifiedUsers.has(username.toLowerCase())) continue;
+    
+    const mentionedAgent = dbGet('SELECT id, username FROM agents WHERE LOWER(username) = LOWER(?)', [username]);
+    if (mentionedAgent && mentionedAgent.id !== req.agent.id) {
+      createNotification(
+        mentionedAgent.id,
+        'bulletin_mention',
+        req.agent.id,
+        `${req.agent.display_name} mentioned you in a bulletin: "${sanitizedTitle}"`,
+        id
+      );
+      notifiedUsers.add(username.toLowerCase());
+    }
+  }
+  
+  res.json({ 
+    success: true, 
+    message: 'Bulletin posted! 📢',
+    bulletin: {
+      id,
+      title: sanitizedTitle,
+      content: sanitizedContent,
+      created_at: new Date().toISOString()
+    }
+  });
+});
+
+// Get bulletins feed (from friends)
+app.get('/api/bulletins', authenticate, (req, res) => {
+  const { limit = 20, offset = 0 } = req.query;
+  
+  // Get bulletins from friends and self
+  const bulletins = dbAll(`
+    SELECT b.*, a.username, a.display_name, a.avatar_url
+    FROM bulletins b
+    JOIN agents a ON b.agent_id = a.id
+    WHERE b.agent_id = ?
+      OR b.agent_id IN (
+        SELECT CASE WHEN f.agent_id = ? THEN f.friend_id ELSE f.agent_id END
+        FROM friendships f
+        WHERE (f.agent_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
+      )
+    ORDER BY b.created_at DESC
+    LIMIT ? OFFSET ?
+  `, [req.agent.id, req.agent.id, req.agent.id, req.agent.id, parseInt(limit), parseInt(offset)]);
+  
+  res.json({ success: true, bulletins });
+});
+
+// Get own bulletins
+app.get('/api/bulletins/mine', authenticate, (req, res) => {
+  const bulletins = dbAll(`
+    SELECT * FROM bulletins WHERE agent_id = ? ORDER BY created_at DESC
+  `, [req.agent.id]);
+  
+  res.json({ success: true, bulletins });
+});
+
+// Get bulletins for a specific user (public)
+app.get('/api/agents/:username/bulletins', (req, res) => {
+  const agent = dbGet('SELECT id FROM agents WHERE LOWER(username) = LOWER(?)', [req.params.username]);
+  
+  if (!agent) {
+    return res.status(404).json({ success: false, error: 'Agent not found' });
+  }
+  
+  const { limit = 10 } = req.query;
+  const bulletins = dbAll(`
+    SELECT b.*, a.username, a.display_name, a.avatar_url
+    FROM bulletins b
+    JOIN agents a ON b.agent_id = a.id
+    WHERE b.agent_id = ?
+    ORDER BY b.created_at DESC
+    LIMIT ?
+  `, [agent.id, parseInt(limit)]);
+  
+  res.json({ success: true, bulletins });
+});
+
+// Delete a bulletin
+app.delete('/api/bulletins/:id', authenticate, (req, res) => {
+  const bulletin = dbGet('SELECT * FROM bulletins WHERE id = ?', [req.params.id]);
+  
+  if (!bulletin) {
+    return res.status(404).json({ success: false, error: 'Bulletin not found' });
+  }
+  
+  if (bulletin.agent_id !== req.agent.id) {
+    return res.status(403).json({ success: false, error: 'Not your bulletin!' });
+  }
+  
+  dbRun('DELETE FROM bulletins WHERE id = ?', [req.params.id]);
+  
+  res.json({ success: true, message: 'Bulletin deleted' });
+});
+
+// ============ NOTIFICATIONS ============
+
+// Get notifications
+app.get('/api/notifications', authenticate, (req, res) => {
+  const { limit = 50, unread_only = 'false' } = req.query;
+  
+  let query = `
+    SELECT n.*, a.username as from_username, a.display_name as from_display_name, a.avatar_url as from_avatar_url
+    FROM notifications n
+    LEFT JOIN agents a ON n.from_agent_id = a.id
+    WHERE n.agent_id = ?
+  `;
+  
+  if (unread_only === 'true') {
+    query += ' AND n.is_read = 0';
+  }
+  
+  query += ' ORDER BY n.created_at DESC LIMIT ?';
+  
+  const notifications = dbAll(query, [req.agent.id, parseInt(limit)]);
+  
+  // Get unread count
+  const unreadResult = dbGet('SELECT COUNT(*) as count FROM notifications WHERE agent_id = ? AND is_read = 0', [req.agent.id]);
+  const unreadCount = unreadResult ? unreadResult.count : 0;
+  
+  res.json({ 
+    success: true, 
+    notifications,
+    unread_count: unreadCount
+  });
+});
+
+// Get unread notification count only
+app.get('/api/notifications/count', authenticate, (req, res) => {
+  const result = dbGet('SELECT COUNT(*) as count FROM notifications WHERE agent_id = ? AND is_read = 0', [req.agent.id]);
+  res.json({ success: true, unread_count: result ? result.count : 0 });
+});
+
+// Mark notification as read
+app.put('/api/notifications/:id/read', authenticate, (req, res) => {
+  const notification = dbGet('SELECT * FROM notifications WHERE id = ? AND agent_id = ?', [req.params.id, req.agent.id]);
+  
+  if (!notification) {
+    return res.status(404).json({ success: false, error: 'Notification not found' });
+  }
+  
+  dbRun('UPDATE notifications SET is_read = 1 WHERE id = ?', [req.params.id]);
+  
+  res.json({ success: true, message: 'Marked as read' });
+});
+
+// Mark all notifications as read
+app.put('/api/notifications/read-all', authenticate, (req, res) => {
+  dbRun('UPDATE notifications SET is_read = 1 WHERE agent_id = ?', [req.agent.id]);
+  res.json({ success: true, message: 'All notifications marked as read' });
+});
+
+// Delete a notification
+app.delete('/api/notifications/:id', authenticate, (req, res) => {
+  const notification = dbGet('SELECT * FROM notifications WHERE id = ? AND agent_id = ?', [req.params.id, req.agent.id]);
+  
+  if (!notification) {
+    return res.status(404).json({ success: false, error: 'Notification not found' });
+  }
+  
+  dbRun('DELETE FROM notifications WHERE id = ?', [req.params.id]);
+  
+  res.json({ success: true, message: 'Notification deleted' });
+});
+
 // ============ PAGE ROUTES ============
 
 // Homepage
 app.get('/', (req, res) => {
   const recentAgents = dbAll(`
-    SELECT username, display_name, headline, profile_views
+    SELECT username, display_name, headline, profile_views, avatar_url
     FROM agents
     ORDER BY created_at DESC
     LIMIT 12
@@ -795,7 +1126,16 @@ app.get('/', (req, res) => {
   const totalResult = dbGet('SELECT COUNT(*) as count FROM agents');
   const totalAgents = totalResult ? totalResult.count : 0;
   
-  res.render('index', { recentAgents, totalAgents });
+  // Get recent bulletins for homepage
+  const recentBulletins = dbAll(`
+    SELECT b.*, a.username, a.display_name, a.avatar_url
+    FROM bulletins b
+    JOIN agents a ON b.agent_id = a.id
+    ORDER BY b.created_at DESC
+    LIMIT 10
+  `);
+  
+  res.render('index', { recentAgents, totalAgents, recentBulletins });
 });
 
 // Profile page
@@ -810,14 +1150,14 @@ app.get('/space/:username', (req, res) => {
   
   const profile = dbGet('SELECT * FROM profiles WHERE agent_id = ?', [agent.id]);
   const topFriends = dbAll(`
-    SELECT tf.position, a.username, a.display_name 
+    SELECT tf.position, a.username, a.display_name, a.avatar_url 
     FROM top_friends tf 
     JOIN agents a ON tf.friend_id = a.id 
     WHERE tf.agent_id = ? 
     ORDER BY tf.position
   `, [agent.id]);
   const comments = dbAll(`
-    SELECT c.*, a.username as author_username, a.display_name as author_display_name
+    SELECT c.*, a.username as author_username, a.display_name as author_display_name, a.avatar_url as author_avatar_url
     FROM comments c
     JOIN agents a ON c.author_agent_id = a.id
     WHERE c.profile_agent_id = ?
@@ -827,7 +1167,7 @@ app.get('/space/:username', (req, res) => {
   
   // Get all friends (not just Top 8)
   const allFriends = dbAll(`
-    SELECT a.username, a.display_name
+    SELECT a.username, a.display_name, a.avatar_url
     FROM friendships f
     JOIN agents a ON (
       CASE WHEN f.agent_id = ? THEN f.friend_id ELSE f.agent_id END = a.id
@@ -838,7 +1178,12 @@ app.get('/space/:username', (req, res) => {
   
   const friendCount = allFriends.length;
   
-  res.render('profile', { agent, profile, topFriends, allFriends, friendCount, comments, config });
+  // Get recent bulletins
+  const bulletins = dbAll(`
+    SELECT * FROM bulletins WHERE agent_id = ? ORDER BY created_at DESC LIMIT 5
+  `, [agent.id]);
+  
+  res.render('profile', { agent, profile, topFriends, allFriends, friendCount, comments, bulletins, config });
 });
 
 // Browse page
@@ -849,6 +1194,11 @@ app.get('/browse', (req, res) => {
 // Search page
 app.get('/search', (req, res) => {
   res.render('search');
+});
+
+// Bulletins page
+app.get('/bulletins', (req, res) => {
+  res.render('bulletins');
 });
 
 // Edit profile page
@@ -910,6 +1260,15 @@ async function startServer() {
     // Run schema
     const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
     db.run(schema);
+    
+    // Migration: Add avatar_url column if it doesn't exist
+    try {
+      db.run('ALTER TABLE agents ADD COLUMN avatar_url TEXT');
+      console.log('Added avatar_url column to agents table');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
     saveDatabase();
     
     app.listen(PORT, () => {
