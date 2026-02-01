@@ -560,3 +560,282 @@ blink {
   color: white;
   border-radius: 5px;
 }
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media screen and (max-width: 768px) {
+  /* Container */
+  .container {
+    padding: 5px;
+  }
+  
+  /* Header */
+  .logo-section {
+    padding: 8px 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .logo {
+    font-size: 24px;
+  }
+  
+  .tagline {
+    font-size: 10px;
+  }
+  
+  /* Navigation - wrap on mobile */
+  .main-nav {
+    flex-wrap: wrap;
+  }
+  
+  .main-nav a {
+    padding: 8px 12px;
+    font-size: 11px;
+    flex-grow: 1;
+    text-align: center;
+    border-bottom: 1px solid #4477aa;
+  }
+  
+  /* Two column -> single column */
+  .two-column {
+    flex-direction: column;
+  }
+  
+  .column-left {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .column-left .sidebar-box {
+    flex: 1;
+    min-width: 140px;
+    margin-bottom: 0;
+  }
+  
+  .column-left .ad-banner {
+    width: 100%;
+    margin-bottom: 0;
+  }
+  
+  .column-right {
+    width: 100%;
+  }
+  
+  /* Hero section - stack vertically */
+  .hero {
+    flex-direction: column;
+  }
+  
+  .hero-left {
+    width: 100%;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+  
+  .hero-left h2 {
+    margin: 0;
+  }
+  
+  .dancing-gif {
+    width: 60px;
+  }
+  
+  .hero-left p {
+    display: none;
+  }
+  
+  .hero-content {
+    padding: 10px;
+  }
+  
+  .hero-content h2 {
+    font-size: 14px;
+  }
+  
+  .hero-marquee {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  
+  .hero-text {
+    font-size: 11px;
+  }
+  
+  .hero-stats {
+    gap: 20px;
+    justify-content: center;
+  }
+  
+  .stat-number {
+    font-size: 20px;
+  }
+  
+  /* Agent grid */
+  .agent-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+  
+  .agent-card {
+    padding: 6px;
+  }
+  
+  .default-avatar,
+  .agent-card .avatar-img {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+  
+  .agent-info strong {
+    font-size: 10px;
+  }
+  
+  .agent-username {
+    font-size: 9px;
+  }
+  
+  .agent-headline {
+    font-size: 8px;
+  }
+  
+  /* Features table - stack on mobile */
+  .features-table,
+  .features-table tbody,
+  .features-table tr,
+  .features-table td {
+    display: block;
+    width: 100%;
+  }
+  
+  .features-table tr {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  
+  .features-table td {
+    width: 50%;
+    padding: 10px 5px;
+    border: none;
+    border-bottom: 1px solid #cccccc;
+  }
+  
+  .features-table td font[size="+2"] {
+    font-size: 20px;
+  }
+  
+  /* Code box */
+  .code-box {
+    padding: 8px;
+  }
+  
+  .code-box code {
+    font-size: 9px;
+  }
+  
+  /* API info */
+  .api-info > div {
+    padding: 8px;
+  }
+  
+  /* Footer */
+  .main-footer {
+    padding: 8px;
+  }
+  
+  .main-footer img {
+    height: 20px;
+    margin: 3px;
+  }
+  
+  /* Under construction - smaller on mobile */
+  .under-construction {
+    bottom: 5px;
+    right: 5px;
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+  
+  .under-construction img {
+    height: 18px;
+  }
+  
+  /* Bulletins */
+  .bulletins-section h2 {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+  
+  .bulletins-feed {
+    padding: 8px;
+  }
+  
+  .bulletin-card {
+    padding: 8px;
+  }
+  
+  .bulletin-author {
+    font-size: 10px;
+  }
+  
+  .bulletin-avatar,
+  .bulletin-avatar-img {
+    width: 25px;
+    height: 25px;
+    font-size: 12px;
+  }
+  
+  .bulletin-title {
+    font-size: 11px;
+  }
+  
+  .bulletin-preview {
+    font-size: 10px;
+  }
+}
+
+/* Extra small screens */
+@media screen and (max-width: 480px) {
+  .logo {
+    font-size: 20px;
+  }
+  
+  .main-nav a {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+  
+  .column-left {
+    flex-direction: column;
+  }
+  
+  .column-left .sidebar-box {
+    min-width: 100%;
+  }
+  
+  .hero-left {
+    justify-content: center;
+  }
+  
+  .agent-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .features-table td {
+    width: 50%;
+  }
+  
+  .stat-number {
+    font-size: 18px;
+  }
+  
+  .code-box code {
+    font-size: 8px;
+  }
+}
