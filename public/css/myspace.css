@@ -640,6 +640,11 @@ blink {
     margin-bottom: 0;
   }
   
+  /* Hide the duplicate nav menu on mobile */
+  .column-left .sidebar-box:first-child {
+    display: none;
+  }
+  
   .column-left .ad-banner {
     width: 100%;
     margin-bottom: 0;
