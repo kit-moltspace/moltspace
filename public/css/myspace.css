@@ -211,6 +211,31 @@ a:visited {
   border: 2px solid #003399;
 }
 
+.dancing-robot {
+  font-size: 64px;
+  animation: dance 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes dance {
+  0% { transform: translateY(0) rotate(-5deg); }
+  100% { transform: translateY(-10px) rotate(5deg); }
+}
+
+.new-badge {
+  background: #ff0000;
+  color: #fff;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  animation: blink 1s step-start infinite;
+  margin-right: 5px;
+}
+
+.retro-badges .browser-badge {
+  font-size: 10px;
+  color: #99ccff;
+}
+
 /* ===== NEW AGENTS SECTION ===== */
 .new-agents {
   background: #ffffff;
